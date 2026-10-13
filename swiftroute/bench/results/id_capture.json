@@ -1,0 +1,39 @@
+{
+  "parcels": 20000,
+  "trials_per_level": 1500,
+  "levels": [
+    {
+      "per_char_error": 0.03,
+      "naive_exact_lookup": 0.7813333333333333,
+      "resolver_top1": 0.9833333333333333,
+      "resolver_in_offered_candidates": 0.9833333333333333,
+      "wrong_top1_caught_by_readback": 0.0,
+      "silent_wrong_parcel": 0.0,
+      "not_found_reask": 0.016666666666666666,
+      "resolve_ms_p50": 1.91,
+      "resolve_ms_p95": 3.81
+    },
+    {
+      "per_char_error": 0.08,
+      "naive_exact_lookup": 0.52,
+      "resolver_top1": 0.9253333333333333,
+      "resolver_in_offered_candidates": 0.9253333333333333,
+      "wrong_top1_caught_by_readback": 0.0,
+      "silent_wrong_parcel": 0.0,
+      "not_found_reask": 0.07466666666666667,
+      "resolve_ms_p50": 2.23,
+      "resolve_ms_p95": 5.06
+    },
+    {
+      "per_char_error": 0.15,
+      "naive_exact_lookup": 0.2793333333333333,
+      "resolver_top1": 0.7826666666666666,
+      "resolver_in_offered_candidates": 0.7826666666666666,
+      "wrong_top1_caught_by_readback": 0.0,
+      "silent_wrong_parcel": 0.0,
+      "not_found_reask": 0.21733333333333332,
+      "resolve_ms_p50": 2.06,
+      "resolve_ms_p95": 4.45
+    }
+  ]
+}

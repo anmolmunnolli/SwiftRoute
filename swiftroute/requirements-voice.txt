@@ -1,0 +1,5 @@
+-r requirements.txt
+pipecat-ai[runner,webrtc,silero,whisper,kokoro]>=1.12
+# Pipecat's whisper module imports mlx_whisper on Apple Silicon even for faster-whisper
+pipecat-ai[mlx-whisper]>=1.12 ; sys_platform == "darwin" and platform_machine == "arm64"
+espeakng-loader>=0.2  # synthetic caller voice for swiftroute.inspector.simulate

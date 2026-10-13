@@ -1,0 +1,1106 @@
+<title>SwiftRoute Inspector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a dispatch console. Call timeline (spectrogram) across the top, turns on the
+   left, the selected turn's full trace in the middle, live call state on the right. */
+:root {
+  --bg: #e9edf1;          /* cool depot-floor grey */
+  --panel: #fbfcfd;
+  --sunk: #f1f4f7;
+  --ink: #15212c;
+  --muted: #5a6877;
+  --line: #d3dae2;
+  --caller: #b5650a;      /* waybill amber: the caller's side */
+  --agent: #0d7c7a;       /* teal: the agent's side */
+  --accent: #b5650a;
+  --ok: #217a3c;
+  --deny: #b42318;
+  --warn: #8a5a00;
+  --ok-bg: #e3f2e7;
+  --deny-bg: #fbe6e3;
+  --warn-bg: #fbf0d9;
+  --scope: #0b1219;       /* the spectrogram screen stays dark in both themes */
+  --scope-ink: #c9d4de;
+  --scope-grid: #1d2a36;
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d151d; --panel: #131e29; --sunk: #0f1922; --ink: #e2e9f0; --muted: #8b9bab; --line: #24323f;
+    --caller: #f0a43c; --agent: #3cc6c0; --accent: #f0a43c;
+    --ok: #5cc982; --deny: #ff7b6b; --warn: #e8b64c;
+    --ok-bg: #12301f; --deny-bg: #3a1714; --warn-bg: #33270d;
+    --scope: #070c11; --scope-ink: #c9d4de; --scope-grid: #172330;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d151d; --panel: #131e29; --sunk: #0f1922; --ink: #e2e9f0; --muted: #8b9bab; --line: #24323f;
+  --caller: #f0a43c; --agent: #3cc6c0; --accent: #f0a43c;
+  --ok: #5cc982; --deny: #ff7b6b; --warn: #e8b64c;
+  --ok-bg: #12301f; --deny-bg: #3a1714; --warn-bg: #33270d;
+  --scope: #070c11; --scope-ink: #c9d4de; --scope-grid: #172330;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--f-body); margin: 0; }
+button, select, input { font: inherit; color: inherit; }
+.wrap { padding-inline: 16px; padding-block: 12px 24px; display: grid; gap: 12px; max-width: 1680px; margin: 0 auto; }
+
+/* ---------- header ---------- */
+header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand h1 { font: 700 26px/1 var(--f-display); letter-spacing: .02em; margin: 0; text-transform: uppercase; }
+.brand h1 span { color: var(--accent); }
+.brand small { color: var(--muted); font-size: 13px; }
+.source { font: 600 12px/1 var(--f-mono); padding: 5px 8px; border-radius: 3px; border: 1px solid var(--line); background: var(--panel); text-transform: uppercase; letter-spacing: .06em; }
+.source.live { color: var(--deny); border-color: var(--deny); }
+.source.live::before { content: "● "; }
+nav.tabs { display: flex; gap: 2px; margin-left: auto; background: var(--sunk); border: 1px solid var(--line); border-radius: 6px; padding: 2px; }
+nav.tabs button { border: 0; background: transparent; padding: 6px 12px; border-radius: 4px; cursor: pointer; color: var(--muted); font-weight: 500; }
+nav.tabs button[aria-selected="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+button:focus-visible, select:focus-visible, input:focus-visible, .turn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- transport controls ---------- */
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.btn { border: 1px solid var(--line); background: var(--panel); padding: 5px 11px; border-radius: 4px; cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); min-width: 84px; }
+.clock { font: 500 15px var(--f-mono); font-variant-numeric: tabular-nums; min-width: 128px; }
+.controls label { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.controls select { border: 1px solid var(--line); background: var(--panel); border-radius: 4px; padding: 4px 6px; max-width: 240px; }
+.stack { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; background: var(--panel); white-space: nowrap; font-size: 12px; }
+.chip b { font-weight: 600; }
+.chip.real::before, .chip.stand::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.chip.stand::before { background: var(--warn); }
+
+/* ---------- pipeline strip ---------- */
+.pipeline { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.node { padding: 8px 9px 9px; border-right: 1px solid var(--line); position: relative; min-width: 0; transition: background .25s; }
+.node:last-child { border-right: 0; }
+.node .nm { font: 600 13px/1.1 var(--f-display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; gap: 4px; }
+.node .nm i { font-style: normal; font-family: var(--f-mono); font-size: 10px; letter-spacing: 0; opacity: .8; }
+.node .val { font: 12px/1.3 var(--f-mono); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 16px; }
+.node::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: transparent; transition: background .25s; }
+.node.hot { background: var(--sunk); }
+.node.hot::after { background: var(--accent); }
+.node.hot .nm { color: var(--ink); }
+.node.side-caller.hot::after { background: var(--caller); }
+.node.side-agent.hot::after { background: var(--agent); }
+
+/* ---------- spectrogram ---------- */
+.scope { background: var(--scope); border-radius: 6px; padding: 8px 10px 6px; color: var(--scope-ink); display: grid; gap: 6px; }
+.scope-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; font-size: 12px; }
+.scope-head strong { font: 600 14px var(--f-display); letter-spacing: .06em; text-transform: uppercase; }
+.scope-head span { color: #8ea0b1; }
+.legend { margin-left: auto; display: flex; gap: 12px; font-size: 12px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+#spec { width: 100%; height: 250px; display: block; cursor: crosshair; }
+#overview { width: 100%; height: 34px; display: block; cursor: pointer; border-top: 1px solid var(--scope-grid); }
+.hover-read { font: 12px var(--f-mono); color: #8ea0b1; min-height: 16px; }
+
+/* ---------- main grid ---------- */
+.main { display: grid; grid-template-columns: minmax(250px, 1.05fr) minmax(0, 2.2fr) minmax(250px, 1.1fr); gap: 12px; align-items: start; }
+.col { display: grid; gap: 12px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
+.panel > h2 { font: 600 14px/1 var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.panel > h2 em { font: 400 12px var(--f-body); letter-spacing: 0; text-transform: none; font-style: normal; }
+.scroll { max-height: 640px; overflow: auto; }
+
+/* turns */
+.turns { display: grid; }
+.turn { padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; display: grid; gap: 5px; border-left: 3px solid transparent; }
+.turn:hover { background: var(--sunk); }
+.turn.now { border-left-color: var(--accent); }
+.turn.sel { background: var(--sunk); }
+.turn .th { display: flex; justify-content: space-between; font: 600 12px var(--f-mono); color: var(--muted); }
+.turn .th b { color: var(--ink); font-family: var(--f-display); font-size: 14px; letter-spacing: .05em; text-transform: uppercase; }
+.say { font-size: 13px; line-height: 1.4; }
+.say.c { color: var(--ink); }
+.say.c::before { content: "Caller  "; color: var(--caller); font: 600 11px var(--f-mono); }
+.say.a::before { content: "Agent  "; color: var(--agent); font: 600 11px var(--f-mono); }
+.say.a { color: var(--ink); opacity: .9; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { font: 500 11px/1 var(--f-mono); padding: 3px 6px; border-radius: 3px; background: var(--sunk); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.tag.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.tag.deny { background: var(--deny-bg); color: var(--deny); border-color: transparent; }
+.tag.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.tag.fast { color: var(--agent); }
+
+/* trace detail */
+.detail { padding: 4px 0 8px; }
+.step { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 4px 12px; padding: 9px 12px; border-bottom: 1px dashed var(--line); }
+.step:last-child { border-bottom: 0; }
+.stage { font: 600 12px/1.2 var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+.stage small { display: block; font: 400 11px var(--f-mono); letter-spacing: 0; text-transform: none; margin-top: 3px; color: var(--muted); opacity: .85; }
+.stage.c { color: var(--caller); }
+.stage.a { color: var(--agent); }
+.body { min-width: 0; display: grid; gap: 6px; }
+.body p { margin: 0; }
+.why { color: var(--muted); font-size: 12.5px; }
+.mono { font-family: var(--f-mono); font-size: 12.5px; }
+.quote { font-size: 14px; }
+.verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pill { font: 600 11px/1 var(--f-mono); letter-spacing: .05em; padding: 4px 7px; border-radius: 3px; text-transform: uppercase; }
+.pill.ok { background: var(--ok-bg); color: var(--ok); }
+.pill.deny { background: var(--deny-bg); color: var(--deny); }
+.pill.info { background: var(--sunk); color: var(--muted); border: 1px solid var(--line); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.bar { height: 8px; background: var(--sunk); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; width: 180px; max-width: 100%; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+details { border: 1px solid var(--line); border-radius: 4px; background: var(--sunk); }
+details > summary { cursor: pointer; padding: 5px 8px; font-size: 12.5px; color: var(--muted); }
+details[open] > summary { border-bottom: 1px solid var(--line); }
+pre { margin: 0; padding: 8px; font: 12px/1.45 var(--f-mono); white-space: pre-wrap; word-break: break-word; overflow-x: auto; max-height: 360px; overflow-y: auto; }
+.msg { border-top: 1px solid var(--line); }
+.msg:first-child { border-top: 0; }
+.msg .role { font: 600 11px var(--f-mono); color: var(--muted); padding: 6px 8px 0; text-transform: uppercase; letter-spacing: .05em; }
+.msg.state { background: var(--warn-bg); }
+.msg.state .role { color: var(--warn); }
+.funnel { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; font-family: var(--f-mono); font-size: 12px; }
+.funnel div { border: 1px solid var(--line); padding: 5px 9px; background: var(--sunk); margin-right: -1px; display: grid; }
+.funnel div b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.funnel div:last-child { background: var(--ok-bg); color: var(--ok); }
+table.ids { border-collapse: collapse; font: 12.5px var(--f-mono); }
+table.ids td, table.ids th { padding: 3px 10px 3px 0; text-align: left; font-variant-numeric: tabular-nums; }
+table.ids th { font-weight: 500; color: var(--muted); font-size: 11.5px; }
+.ch { padding: 0 1px; }
+.ch.d { background: var(--warn-bg); color: var(--warn); border-radius: 2px; font-weight: 600; }
+.chunks { display: flex; flex-wrap: wrap; gap: 4px; }
+.chunks span { border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; font-size: 12.5px; background: var(--sunk); }
+.chunks span:first-child { border-color: var(--agent); }
+.wf { display: grid; gap: 4px; }
+.wf-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) 64px; gap: 8px; align-items: center; font: 12px var(--f-mono); }
+.wf-track { position: relative; height: 12px; background: var(--sunk); border-radius: 2px; }
+.wf-track i { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.wf-row span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.empty { padding: 18px 14px; color: var(--muted); }
+
+/* state */
+dl.kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; margin: 0; padding: 10px 12px; font-size: 13px; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; font-family: var(--f-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.codes { padding: 0 12px 12px; display: flex; flex-wrap: wrap; gap: 4px; }
+#latchart { width: 100%; display: block; }
+.lat-wrap { padding: 8px 12px 12px; }
+.lat-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+.lat-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.log { font: 11.5px/1.5 var(--f-mono); }
+.log div { display: grid; grid-template-columns: 58px 104px minmax(0, 1fr); gap: 6px; padding: 2px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.log div:hover { background: var(--sunk); }
+.log div span:nth-child(1) { color: var(--muted); font-variant-numeric: tabular-nums; }
+.log div span:nth-child(3) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.filters button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; font-size: 11.5px; padding: 2px 8px; cursor: pointer; color: var(--muted); }
+.filters button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+
+/* ---------- explainer tabs ---------- */
+.page { display: grid; gap: 14px; }
+.lede { max-width: 72ch; font-size: 15px; margin: 0; }
+.lede strong { font-weight: 600; }
+.group h3 { font: 700 20px/1.1 var(--f-display); letter-spacing: .04em; text-transform: uppercase; margin: 6px 0 8px; text-wrap: balance; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.card h4 { margin: 0; font-size: 14.5px; font-weight: 600; text-wrap: balance; }
+.card p { margin: 0; font-size: 13px; }
+.card .ev { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: space-between; margin-top: 2px; }
+.card .ev code { font: 11.5px var(--f-mono); color: var(--muted); }
+.card .seen { font-size: 12.5px; color: var(--muted); }
+.card .seen b { color: var(--ink); font-weight: 600; }
+.loop { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; counter-reset: s; }
+.loop div { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; position: relative; font-size: 13px; }
+.loop div b { display: block; font: 600 15px/1.15 var(--f-display); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 4px; }
+.loop div::before { counter-increment: s; content: counter(s); font: 600 11px var(--f-mono); color: var(--accent); display: block; margin-bottom: 4px; }
+.loop div.pending { border-style: dashed; }
+.tablewrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+table.t { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.t th, table.t td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.t th { font: 600 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--sunk); }
+table.t td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.t tr:last-child td { border-bottom: 0; }
+.lrn { display: grid; gap: 10px; }
+.lrn .row { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 4px; }
+.lrn .row .top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lrn .row p { margin: 0; }
+.lrn code { font: 12px var(--f-mono); }
+.note { background: var(--warn-bg); border-radius: 6px; padding: 10px 12px; font-size: 13.5px; max-width: 90ch; }
+
+@media (max-width: 1180px) {
+  .main { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
+  .main .col.right { grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .pipeline { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .node:nth-child(6) { border-right: 0; }
+  .node:nth-child(-n+6) { border-bottom: 1px solid var(--line); }
+  .loop { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .node { border-bottom: 1px solid var(--line); }
+  .node:nth-child(3n) { border-right: 0; }
+  .step { grid-template-columns: minmax(0, 1fr); }
+  #spec { height: 210px; }
+  .loop { grid-template-columns: minmax(0, 1fr); }
+  nav.tabs { margin-left: 0; width: 100%; }
+  nav.tabs button { flex: 1; padding: 6px 4px; }
+  .legend { margin-left: 0; }
+  .scroll { max-height: 480px; }
+}
+@media (prefers-reduced-motion: reduce) { .node, .node::after { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><h1>Swift<span>Route</span> Inspector</h1><small>every step of a voice-agent call, as it happens</small></div>
+    <span id="source" class="source">no call loaded</span>
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tab-call" aria-selected="true" data-tab="call">The call</button>
+      <button role="tab" id="tab-handles" aria-selected="false" data-tab="handles">What it handles</button>
+      <button role="tab" id="tab-better" aria-selected="false" data-tab="better">How it gets better</button>
+    </nav>
+  </header>
+
+  <!-- ============================ CALL ============================ -->
+  <section id="view-call" class="page">
+    <div class="controls">
+      <button class="btn primary" id="play" type="button">Play</button>
+      <button class="btn" id="restart" type="button">Restart</button>
+      <span class="clock" id="clock">0:00.0 / 0:00.0</span>
+      <label for="speed">Speed <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></label>
+      <label for="sound"><input type="checkbox" id="sound" checked> Sound</label>
+      <label for="pick" id="pick-wrap" hidden>Recorded calls <select id="pick"></select></label>
+      <button class="btn" id="golive" type="button" hidden>Follow live call</button>
+      <label class="btn" for="file" style="cursor:pointer">Open trace…<input type="file" id="file" accept=".jsonl,.ndjson,.json,.wav" multiple hidden></label>
+      <div class="stack" id="stack"></div>
+    </div>
+
+    <div class="pipeline" id="pipeline"></div>
+
+    <div class="scope">
+      <div class="scope-head">
+        <strong>Log-mel spectrogram</strong>
+        <span>80 mel bins · 25 ms window · 10 ms hop · 0–8 kHz. The same features Whisper reads.</span>
+        <div class="legend"><span><i style="background:#f0a43c"></i>caller</span><span><i style="background:#3cc6c0"></i>agent</span><span><i style="background:#ff7b6b"></i>barge-in</span></div>
+      </div>
+      <canvas id="spec" aria-label="Spectrogram of both sides of the call with turn-taking markers"></canvas>
+      <canvas id="overview" aria-label="Whole call overview. Click to jump."></canvas>
+      <div class="hover-read" id="hover">Hover the spectrogram to read time and frequency. Click the strip below it to jump.</div>
+    </div>
+
+    <div class="main">
+      <div class="col">
+        <div class="panel">
+          <h2>Turns <em id="turncount"></em></h2>
+          <div class="turns scroll" id="turns"><div class="empty">Load a trace or start a call.</div></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="panel">
+          <h2><span id="detail-title">Turn trace</span> <em id="detail-sub">everything the system did, in order</em></h2>
+          <div class="detail scroll" id="detail" style="max-height:900px"><div class="empty">Pick a turn.</div></div>
+        </div>
+      </div>
+      <div class="col right">
+        <div class="panel">
+          <h2>Call state <em>held in code, not in the prompt</em></h2>
+          <dl class="kv" id="state"></dl>
+          <div class="codes" id="codes"></div>
+        </div>
+        <div class="panel">
+          <h2>Voice-to-voice per turn <em>ms</em></h2>
+          <div class="lat-wrap"><svg id="latchart" role="img" aria-label="Latency per turn"></svg>
+            <div class="lat-legend"><span><i style="background:var(--caller)"></i>end of turn detection</span><span><i style="background:var(--muted)"></i>STT tail</span><span><i style="background:var(--accent)"></i>agent</span><span><i style="background:var(--agent)"></i>TTS first audio</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Event stream <em id="evcount"></em></h2>
+          <div class="filters" id="filters"></div>
+          <div class="log scroll" id="log" style="max-height:300px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ HANDLES ============================ -->
+  <section id="view-handles" class="page" hidden>
+    <p class="lede">Each item below is something that went wrong in a real call or an eval run, and the mechanism that now handles it. <strong>Show in call</strong> jumps to the moment it fires in the loaded call. Items without the button didn't come up in this call.</p>
+    <div id="handles"></div>
+  </section>
+
+  <!-- ============================ BETTER ============================ -->
+  <section id="view-better" class="page" hidden>
+    <p class="lede">SwiftRoute learns between calls, never during one, and every change has to prove itself first. An improvement agent reads failures through SwiftRoute's MCP server and writes short lessons for the phone agent. A lesson is kept only if the eval suite scores higher with no new safety failures. Confirmed read-backs teach the tracking-number decoder which characters speech recognition really confuses. Policy rules and model weights are never changed by these loops.</p>
+    <div class="loop">
+      <div><b>Run calls</b>Real calls in the browser, plus 15 scripted scenarios with a caller that knows the ground truth.</div>
+      <div><b>Find the failure</b>In the trace: a wrong parcel, an unbacked "done", a 3.0 s endpoint, a tool name read aloud.</div>
+      <div><b>Propose a fix</b>The improvement agent drafts a one-line lesson over MCP. Safety bugs get a structural guard in code instead.</div>
+      <div><b>Gate it</b>Evals with and without the lesson, two rounds: more passes, no new safety failures, held-out not worse. Otherwise rejected.</div>
+      <div><b>Learn from confirmations</b>Each "yes, that's my parcel" after a corrected read-back is a labelled ASR error. Kept if replay and benchmark hold.</div>
+      <div class="pending"><b>Distil</b>Passing 7B conversations train a 1.5B student with LoRA on the Mac. Built, not yet run.</div>
+    </div>
+    <div class="group"><h3>Learning log</h3><div id="learning"></div></div>
+    <div class="group"><h3>Failures that became fixes</h3>
+      <div class="tablewrap"><table class="t" id="incidents"></table></div></div>
+    <div class="group"><h3>Eval scores over time</h3>
+      <div class="tablewrap"><table class="t" id="evals"></table></div></div>
+    <div class="group"><h3>Phase 6a: a measured negative result</h3>
+      <div class="tablewrap"><table class="t" id="phase6"></table></div>
+      <p class="lede" style="margin-top:10px">Cutting prompt tokens by a third made the 3B no faster and no more accurate. Ollama reuses the cached prefix of the prompt, so a stable prompt matters more than a short one, and the cost left over is decoding. The same four scenarios failed in every prompt variant, which points at model capacity. That is why the next step is distillation, not more prompt work.</p>
+    </div>
+  </section>
+</div>
+
+<script type="application/x-ndjson" id="embedded-trace"></script>
+<script>
+"use strict";
+/* ======================================================================
+   Data model
+   ====================================================================== */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = ms => { if (ms == null || isNaN(ms)) return "–"; const s = Math.max(0, ms) / 1000; return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`; };
+const ms = v => v == null ? "–" : `${Math.round(v).toLocaleString()} ms`;
+
+const FAMILY = {
+  "audio.mel": "audio", "audio.format": "audio", "vad": "vad", "smart_turn": "turn", "turn.user_start": "turn",
+  "turn.user_end": "turn", "endpoint.config": "turn", "endpoint.early": "turn", "stt.final": "stt", "stt.interim": "stt",
+  "slot": "slots", "id.parse": "ids", "id.decode": "ids", "llm.request": "llm", "llm.response": "llm",
+  "tool.call": "tools", "tool.result": "tools", "tool.rejected": "tools", "policy.verify": "policy",
+  "guard": "guards", "fastpath": "llm", "turn.start": "agent", "turn.end": "agent", "agent.say": "tts",
+  "tts.start": "tts", "tts.stop": "tts", "tts.text": "tts", "tts.cut": "tts", "bot.speaking": "tts",
+  "barge_in": "turn", "filler": "tts", "latency": "agent", "state": "agent", "sim.caller_says": "caller",
+  "call.start": "agent", "call.end": "agent",
+};
+const NODES = [
+  ["caller", "Caller", "caller"], ["vad", "VAD", "caller"], ["turn", "Turn-taking", "caller"], ["stt", "STT", "caller"],
+  ["slots", "Slots", ""], ["ids", "ID decoder", ""], ["llm", "LLM", ""], ["tools", "Tools", ""], ["policy", "Policy", ""],
+  ["guards", "Guards", ""], ["tts", "TTS", "agent"],
+];
+
+const M = {
+  events: [], meta: {}, callId: null, duration: 0,
+  live: false, ws: null, followLive: false,
+  t: 0, playing: false, speed: 1, lastFrame: 0,
+  applied: 0,           // events[0..applied) are applied (t <= playhead)
+  sel: null, follow: true, logFilter: new Set(),
+  wavUrl: null,
+};
+let V;   // derived view state, rebuilt by reset()
+
+function reset() {
+  V = {
+    buckets: [{ id: 0, label: "Greeting", events: [], turn: null }],
+    closed: false, turnToBucket: {}, state: null, codes: [], mel: { caller: [], agent: [] },
+    marks: [], vad: [], vadOpen: null, latency: {}, nodeLast: {}, nodeHot: {}, log: [],
+  };
+  M.applied = 0;
+}
+
+/* ingest: assign each event to a turn bucket (once, at load) */
+function ingest(list) {
+  for (const e of list) {
+    if (e.kind === "hello") continue;
+    if (e.kind === "call.start" && M.callId && e.call !== M.callId && M.live) { M.events = []; M.meta = {}; reset(); }
+    if (e.kind === "call.start") { M.meta = e; M.callId = e.call; }
+    M.events.push(e);
+  }
+  M.events.sort((a, b) => a.t - b.t || a.seq - b.seq);
+  assignBuckets();
+  M.duration = M.events.length ? M.events[M.events.length - 1].t : 0;
+}
+
+function assignBuckets() {
+  let b = 0, closed = false, opened = false;
+  const turnToBucket = {};
+  for (const e of M.events) {
+    const k = e.kind;
+    if (closed && (k === "sim.caller_says" || k === "turn.user_start" || (k === "vad" && e.state === "speech"))) { b++; closed = false; opened = true; }
+    if (k === "turn.start") turnToBucket[e.turn] = b;
+    e._b = (k === "latency" && turnToBucket[e.turn] != null) ? turnToBucket[e.turn] : b;
+    if (k === "turn.end" || (b === 0 && k === "agent.say")) closed = true;
+  }
+  M.turnToBucket = turnToBucket;
+}
+
+/* apply: fold one event into the view state (called in time order up to the playhead) */
+function apply(e) {
+  const k = e.kind, fam = FAMILY[k] || "agent";
+  while (V.buckets.length <= e._b) V.buckets.push({ id: V.buckets.length, label: `Turn ${V.buckets.length}`, events: [], turn: null });
+  const bk = V.buckets[e._b];
+  if (k !== "audio.mel" && k !== "state") bk.events.push(e);
+  if (k === "turn.start") { bk.turn = e.turn; bk.label = `Turn ${e.turn}`; }
+  if (k === "state") { V.state = e; }
+  if (k === "audio.mel") {
+    if (!e._img) e._img = melImage(e);
+    V.mel[e.lane]?.push(e);
+    const n = e.cols.length;
+    if (e.lane === "caller") V.nodeLast.caller = `${e.rms_dbfs} dBFS`;
+    markHot(e.lane === "caller" ? "caller" : "tts", e.start_ms + n * e.hop_ms);
+    return;
+  }
+  if (k === "vad" && e.state === "speech") V.vadOpen = e.t;
+  if (k === "vad" && e.state === "silence" && V.vadOpen != null) { V.vad.push([V.vadOpen, e.t]); V.vadOpen = null; }
+  if (k === "latency") V.latency[e.turn] = e;
+  if (["turn.user_end", "endpoint.early", "smart_turn", "stt.final", "agent.say", "barge_in", "filler", "tts.cut", "guard", "sim.caller_says"].includes(k)) V.marks.push(e);
+  V.log.push(e);
+  // pipeline node readouts
+  const val = nodeValue(e);
+  if (val) V.nodeLast[nodeFor(e)] = val;
+  markHot(nodeFor(e), e.t);
+}
+function nodeFor(e) {
+  const k = e.kind;
+  if (k === "sim.caller_says") return "caller";
+  if (k === "tool.result" && e.policy) return "policy";
+  if (k === "fastpath") return "llm";
+  if (k === "agent.say" || k.startsWith("tts") || k === "filler") return "tts";
+  if (k === "barge_in") return "turn";
+  return FAMILY[k] || "llm";
+}
+function markHot(node, t) { V.nodeHot[node] = Math.max(V.nodeHot[node] || -1e9, t); }
+function nodeValue(e) {
+  switch (e.kind) {
+    case "vad": return e.state === "speech" ? "speech" : "silence";
+    case "smart_turn": return `${e.complete ? "done" : "not done"} p=${e.probability}`;
+    case "turn.user_end": return e.early ? "ended by checksum" : `ended +${e.endpoint_ms} ms`;
+    case "endpoint.early": return "checksum end";
+    case "endpoint.config": return `wait ${e.silence_fallback_s}s (${e.expect})`;
+    case "stt.final": return `“${e.text}”`;
+    case "slot": return e.action.split(":")[0];
+    case "id.decode": return `${e.status} · ${e.generated}→${e.checksum_valid}→${e.exist_in_db}`;
+    case "llm.response": return e.tool_calls?.length ? `→ ${e.tool_calls.map(c => c.name).join(", ")}` : `${e.ms} ms text`;
+    case "fastpath": return "skipped (fast path)";
+    case "tool.result": return `${e.tool}: ${e.reason_code || (e.allowed ? "ok" : "–")}`;
+    case "policy.verify": return `level ${e.level}`;
+    case "guard": return e.guard;
+    case "agent.say": return `“${e.text}”`;
+    case "sim.caller_says": return `“${e.text}”`;
+    case "filler": return `filler: ${e.text}`;
+    case "barge_in": return "barge-in";
+    default: return null;
+  }
+}
+
+function seek(t) {
+  t = Math.max(0, Math.min(t, M.duration));
+  if (t < M.t || M.applied === 0) reset();
+  M.t = t;
+  let i = M.applied, changed = M.applied === 0;
+  while (i < M.events.length && M.events[i].t <= t) { const e = M.events[i]; apply(e); if (e.kind !== "audio.mel") changed = true; i++; }
+  M.applied = i;
+  if (M.follow) {
+    const cur = currentBucket();
+    if (cur != null) M.sel = cur;
+  }
+  if (changed) renderPanels();
+  syncAudio(false);
+}
+function currentBucket() {
+  for (let b = V.buckets.length - 1; b >= 0; b--) if (V.buckets[b].events.length) return b;
+  return null;
+}
+
+/* ======================================================================
+   Spectrogram
+   ====================================================================== */
+const LUT = (() => {   // perceptual ramp: scope black -> indigo -> magenta -> amber -> pale yellow
+  const stops = [[0, [7, 12, 17]], [.25, [44, 27, 92]], [.5, [146, 42, 110]], [.72, [230, 98, 56]], [.88, [249, 178, 63]], [1, [252, 244, 196]]];
+  const out = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const x = i / 255; let j = 0; while (j < stops.length - 2 && x > stops[j + 1][0]) j++;
+    const [a, ca] = stops[j], [b, cb] = stops[j + 1], f = (x - a) / (b - a);
+    for (let c = 0; c < 3; c++) out[i * 3 + c] = ca[c] + (cb[c] - ca[c]) * f;
+  }
+  return out;
+})();
+function melImage(e) {
+  const n = e.cols.length, h = 80, cv = document.createElement("canvas");
+  cv.width = n; cv.height = h;
+  const ctx = cv.getContext("2d"), img = ctx.createImageData(n, h);
+  for (let x = 0; x < n; x++) {
+    const hex = e.cols[x];
+    for (let m = 0; m < h; m++) {
+      const v = parseInt(hex.substr(m * 2, 2), 16), o = ((h - 1 - m) * n + x) * 4;
+      img.data[o] = LUT[v * 3]; img.data[o + 1] = LUT[v * 3 + 1]; img.data[o + 2] = LUT[v * 3 + 2]; img.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+const spec = $("#spec"), ov = $("#overview");
+const WINDOW_MS = 12000;
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function viewRange() {
+  const end = Math.max(WINDOW_MS * 0.82, M.t + WINDOW_MS * 0.18);
+  return [end - WINDOW_MS, end];
+}
+function fitCanvas(cv) {
+  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(r.width * d) || cv.height !== Math.round(r.height * d)) { cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d); }
+  const ctx = cv.getContext("2d"); ctx.setTransform(d, 0, 0, d, 0, 0); return [ctx, r.width, r.height];
+}
+const LANE = { top: 18, gap: 26, h: 0 };
+function drawSpec() {
+  const [ctx, W, H] = fitCanvas(spec);
+  const [t0, t1] = viewRange(), X = t => (t - t0) / (t1 - t0) * W;
+  LANE.h = (H - LANE.top - LANE.gap - 14) / 2;
+  const laneY = { caller: LANE.top, agent: LANE.top + LANE.h + LANE.gap };
+  const amber = "#f0a43c", teal = "#3cc6c0", red = "#ff7b6b", ink = "#c9d4de", dim = "#6f8193";
+  ctx.fillStyle = "#0b1219"; ctx.fillRect(0, 0, W, H);
+  ctx.imageSmoothingEnabled = false;
+  // grid + time ticks
+  ctx.font = "11px 'IBM Plex Mono', monospace"; ctx.textBaseline = "alphabetic";
+  for (let s = Math.ceil(t0 / 1000); s * 1000 <= t1; s++) {
+    const x = X(s * 1000); ctx.fillStyle = "#172330"; ctx.fillRect(x, LANE.top, 1, H - LANE.top - 14);
+    ctx.fillStyle = dim; ctx.fillText(fmt(s * 1000).replace(/\.0$/, ""), x + 3, H - 3);
+  }
+  for (const lane of ["caller", "agent"]) {
+    const y = laneY[lane];
+    ctx.fillStyle = "#070c11"; ctx.fillRect(0, y, W, LANE.h);
+    for (const e of V.mel[lane]) {
+      const a = e.start_ms, b = a + e.cols.length * e.hop_ms;
+      if (b < t0 || a > t1) continue;
+      const xa = X(a), xb = X(Math.min(b, M.t));
+      if (xb <= xa) continue;
+      const frac = (Math.min(b, M.t) - a) / (b - a);
+      ctx.drawImage(e._img, 0, 0, Math.max(1, e._img.width * frac), 80, xa, y, xb - xa, LANE.h);
+    }
+    ctx.fillStyle = lane === "caller" ? amber : teal;
+    ctx.font = "600 12px 'Barlow Condensed', sans-serif";
+    ctx.fillText(lane === "caller" ? "CALLER (into STT)" : "AGENT (TTS, as heard)", 6, y - 5);
+    ctx.fillStyle = dim; ctx.font = "10px 'IBM Plex Mono', monospace";
+    ctx.fillText("8 kHz", W - 40, y + 10); ctx.fillText("0", W - 12, y + LANE.h - 3);
+  }
+  // VAD speech spans (top strip of caller lane)
+  ctx.fillStyle = amber;
+  const spans = V.vad.concat(V.vadOpen != null ? [[V.vadOpen, M.t]] : []);
+  for (const [a, b] of spans) { if (b < t0 || a > t1) continue; ctx.fillRect(X(a), LANE.top - 3, Math.max(1, X(b) - X(a)), 3); }
+  // markers
+  const rows = { caller: [], agent: [] };
+  const label = (lane, x, text, color) => {
+    const y0 = lane === "caller" ? laneY.caller + LANE.h - 6 : laneY.agent + 14;
+    ctx.font = "12px 'IBM Plex Sans', sans-serif";
+    const w = ctx.measureText(text).width + 8;
+    let r = 0; while ((rows[lane][r] ?? -1e9) > x) r++;
+    rows[lane][r] = x + w + 4;
+    const y = lane === "caller" ? y0 - r * 17 : y0 + r * 17;
+    ctx.fillStyle = "rgba(7,12,17,.78)"; ctx.fillRect(x, y - 12, w, 16);
+    ctx.fillStyle = color; ctx.fillText(text, x + 4, y);
+  };
+  const vline = (x, color, dash) => { ctx.strokeStyle = color; ctx.setLineDash(dash || []); ctx.beginPath(); ctx.moveTo(x + .5, LANE.top); ctx.lineTo(x + .5, H - 14); ctx.stroke(); ctx.setLineDash([]); };
+  for (const e of V.marks) {
+    if (e.t < t0 - 8000 || e.t > t1) continue;
+    const x = X(e.t);
+    switch (e.kind) {
+      case "turn.user_end": vline(x, amber, [4, 3]); if (x > -50) label("caller", x + 2, e.early ? "turn ended: checksum" : `turn ended +${e.endpoint_ms} ms`, amber); break;
+      case "endpoint.early": vline(x, "#fcf4c4"); break;
+      case "smart_turn": ctx.fillStyle = e.complete ? "#5cc982" : red; ctx.beginPath(); ctx.arc(x, LANE.top + 8, 4, 0, 7); ctx.fill();
+        ctx.font = "10px 'IBM Plex Mono', monospace"; ctx.fillStyle = ink; ctx.fillText(`p=${e.probability}`, x + 6, LANE.top + 12); break;
+      case "stt.final": if (x > -400) label("caller", x + 2, `STT: ${e.text}`, ink); break;
+      case "sim.caller_says": break;
+      case "agent.say": if (x > -400) label("agent", x + 2, e.text, teal); break;
+      case "barge_in": vline(x, red); label("caller", x + 2, "barge-in", red); break;
+      case "tts.cut": vline(x, red, [2, 3]); break;
+      case "filler": label("agent", x + 2, `filler: ${e.text}`, "#e8b64c"); break;
+      case "guard": ctx.fillStyle = "#e8b64c"; ctx.fillRect(x - 3, laneY.agent - 14, 6, 6); break;
+    }
+  }
+  // playhead
+  const px = X(M.t); ctx.fillStyle = "#fcf4c4"; ctx.fillRect(px, LANE.top - 6, 1.5, H - LANE.top - 8);
+}
+function drawOverview() {
+  const [ctx, W, H] = fitCanvas(ov), D = Math.max(M.duration, 1), X = t => t / D * W;
+  ctx.fillStyle = "#0b1219"; ctx.fillRect(0, 0, W, H);
+  // all events, not just applied: the overview is a map of the whole call
+  let open = null;
+  for (const e of M.events) {
+    if (e.kind === "vad" && e.state === "speech") open = e.t;
+    if (e.kind === "vad" && e.state === "silence" && open != null) { ctx.fillStyle = "#f0a43c88"; ctx.fillRect(X(open), 4, Math.max(1, X(e.t) - X(open)), 10); open = null; }
+    if (e.kind === "agent.say") { ctx.fillStyle = "#3cc6c088"; ctx.fillRect(X(e.t), 18, Math.max(2, (e.text.length * 62) / D * W), 10); }
+    if (e.kind === "guard" || (e.kind === "tool.result" && e.allowed === false)) { ctx.fillStyle = "#ff7b6b"; ctx.fillRect(X(e.t) - 1, 2, 2, H - 4); }
+    if (e.kind === "turn.start") { ctx.fillStyle = "#6f8193"; ctx.fillRect(X(e.t), 0, 1, H); }
+  }
+  const [a, b] = viewRange(); ctx.strokeStyle = "#c9d4de66"; ctx.strokeRect(X(Math.max(a, 0)) + .5, .5, X(b) - X(Math.max(a, 0)), H - 1);
+  ctx.fillStyle = "#fcf4c4"; ctx.fillRect(X(M.t), 0, 2, H);
+}
+spec.addEventListener("mousemove", ev => {
+  const r = spec.getBoundingClientRect(), [t0, t1] = viewRange();
+  const t = t0 + (ev.clientX - r.left) / r.width * (t1 - t0), y = ev.clientY - r.top;
+  let lane = null, rel = 0;
+  if (y >= LANE.top && y < LANE.top + LANE.h) { lane = "caller"; rel = 1 - (y - LANE.top) / LANE.h; }
+  const ay = LANE.top + LANE.h + LANE.gap;
+  if (y >= ay && y < ay + LANE.h) { lane = "agent"; rel = 1 - (y - ay) / LANE.h; }
+  const melMax = 2595 * Math.log10(1 + 8000 / 700), hz = 700 * (10 ** (rel * melMax / 2595) - 1);
+  $("#hover").textContent = lane ? `${fmt(t)} · ${lane} · mel bin ${Math.floor(rel * 80)} ≈ ${Math.round(hz)} Hz` : fmt(t);
+});
+spec.addEventListener("click", ev => { const r = spec.getBoundingClientRect(), [t0, t1] = viewRange(); pause(); seek(t0 + (ev.clientX - r.left) / r.width * (t1 - t0)); });
+ov.addEventListener("click", ev => { const r = ov.getBoundingClientRect(); pause(); seek((ev.clientX - r.left) / r.width * M.duration); });
+
+/* ======================================================================
+   Panels
+   ====================================================================== */
+function renderPanels() {
+  renderPipeline(); renderTurns(); renderDetail(); renderState(); renderLatency(); renderLog();
+  $("#clock").textContent = `${fmt(M.t)} / ${fmt(M.duration)}`;
+}
+function renderPipeline() {
+  const el = $("#pipeline");
+  if (!el.children.length) el.innerHTML = NODES.map(([id, name, side]) => `<div class="node ${side ? "side-" + side : ""}" id="n-${id}"><div class="nm">${name}</div><div class="val" id="nv-${id}"></div></div>`).join("");
+  for (const [id] of NODES) {
+    const v = V.nodeLast[id] || "";
+    const ve = $(`#nv-${id}`); if (ve.textContent !== v) { ve.textContent = v; ve.title = v; }
+  }
+}
+function tickNodes() {
+  for (const [id] of NODES) $(`#n-${id}`)?.classList.toggle("hot", M.t - (V.nodeHot[id] ?? -1e9) < 700);
+}
+
+function bucketSummary(bk) {
+  const ev = bk.events, find = k => ev.filter(e => e.kind === k);
+  const caller = find("stt.final").map(e => e.text).join(" ") || find("sim.caller_says").map(e => e.text).join(" ");
+  const agent = find("agent.say").map(e => e.text).join(" ");
+  const tags = [];
+  const llm = find("llm.response").length, fast = find("fastpath").length;
+  if (bk.id > 0) tags.push(llm ? `<span class="tag">${llm} LLM call${llm > 1 ? "s" : ""}</span>` : `<span class="tag fast">0 LLM calls</span>`);
+  if (fast) tags.push(`<span class="tag fast">fast path</span>`);
+  for (const e of find("slot")) if (e.action.startsWith("complete")) tags.push(`<span class="tag fast">slot: ${e.expect}</span>`);
+  for (const e of find("id.decode")) tags.push(`<span class="tag ${e.status === "not_found" ? "deny" : "warn"}">ID ${e.status}</span>`);
+  for (const e of find("tool.result")) if (e.reason_code) tags.push(`<span class="tag ${e.allowed === false ? "deny" : e.allowed ? "ok" : ""}">${esc(e.reason_code)}</span>`);
+  for (const e of find("guard")) tags.push(`<span class="tag warn">guard: ${esc(e.guard)}</span>`);
+  if (find("endpoint.early").length) tags.push(`<span class="tag ok">checksum end</span>`);
+  if (find("barge_in").length) tags.push(`<span class="tag deny">barge-in</span>`);
+  const lat = bk.turn != null ? V.latency[bk.turn] : null;
+  return { caller, agent, tags, lat };
+}
+function renderTurns() {
+  const el = $("#turns"), cur = currentBucket();
+  const items = V.buckets.filter(b => b.events.length);
+  $("#turncount").textContent = items.length ? `${items.length - 1} caller turns` : "";
+  if (!items.length) { el.innerHTML = `<div class="empty">Load a trace or start a call.</div>`; return; }
+  el.innerHTML = items.map(bk => {
+    const s = bucketSummary(bk);
+    return `<div class="turn ${bk.id === cur ? "now" : ""} ${bk.id === M.sel ? "sel" : ""}" data-b="${bk.id}" tabindex="0" role="button" aria-pressed="${bk.id === M.sel}">
+      <div class="th"><b>${esc(bk.label)}</b><span>${fmt(bk.events[0].t)}${s.lat?.voice_to_voice_ms ? ` · ${(s.lat.voice_to_voice_ms / 1000).toFixed(1)} s v2v` : ""}</span></div>
+      ${s.caller ? `<div class="say c">${esc(s.caller)}</div>` : ""}
+      ${s.agent ? `<div class="say a">${esc(s.agent)}</div>` : ""}
+      ${s.tags.length ? `<div class="chips">${s.tags.join("")}</div>` : ""}</div>`;
+  }).join("");
+  const selEl = el.querySelector(".turn.sel");
+  if (selEl && M.follow && M.playing) selEl.scrollIntoView({ block: "nearest" });
+}
+$("#turns").addEventListener("click", ev => { const t = ev.target.closest(".turn"); if (!t) return; M.sel = +t.dataset.b; M.follow = false; renderTurns(); renderDetail(); });
+$("#turns").addEventListener("keydown", ev => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.classList.contains("turn")) { ev.preventDefault(); ev.target.click(); } });
+
+/* one block per event in the selected turn */
+const STAGES = {
+  "sim.caller_says": ["Caller", "c", "synthetic"], "vad": ["VAD", "c", "Silero"], "smart_turn": ["Smart-turn", "c", "v3 audio model"],
+  "turn.user_start": ["Turn-taking", "c"], "turn.user_end": ["Turn-taking", "c"], "endpoint.early": ["Turn-taking", "c", "early end"],
+  "stt.final": ["STT", "c"], "slot": ["Slots", "", "slots.py"], "id.parse": ["ID parser", "", "ids.py"], "id.decode": ["ID decoder", "", "ids.py"],
+  "turn.start": ["Agent", "", "agent.py"], "llm.request": ["Prompt", "", "prompting.py"], "llm.response": ["LLM", ""], "fastpath": ["Fast path", "a"],
+  "tool.call": ["Tool call", "", "tools.py"], "tool.result": ["Tool result", ""], "tool.rejected": ["Tool call", "", "rejected"],
+  "policy.verify": ["Policy", "", "policy.py"], "guard": ["Guard", "", "runtime check"], "turn.end": ["Reply", "a"],
+  "agent.say": ["Speech", "a", "TTS chunks"], "endpoint.config": ["Next listen", "", "endpointing.py"], "filler": ["Filler", "a"],
+  "barge_in": ["Barge-in", "c", "brain.py"], "tts.cut": ["TTS", "a", "cut off"], "latency": ["Latency", "", "this turn"],
+};
+let detailSig = "";
+function renderDetail(force) {
+  const el = $("#detail"), bk = V.buckets[M.sel ?? -1];
+  const sig = `${M.sel}:${bk?.events.length}:${M.callId}`;
+  if (sig === detailSig && !force) return;
+  detailSig = sig;
+  const openIdx = [...el.querySelectorAll("details")].map((d, i) => d.open ? i : -1).filter(i => i >= 0);
+  if (!bk || !bk.events.length) { el.innerHTML = `<div class="empty">Pick a turn.</div>`; $("#detail-title").textContent = "Turn trace"; return; }
+  $("#detail-title").textContent = `${bk.label} trace`;
+  const blocks = [];
+  let vadCount = 0;
+  for (const e of bk.events) {
+    if (e.kind === "vad") { vadCount++; if (vadCount > 2) continue; }
+    const html = block(e);
+    if (!html) continue;
+    const [name, side, sub] = STAGES[e.kind] || [e.kind, ""];
+    blocks.push(`<div class="step" data-t="${e.t}"><div class="stage ${side}">${esc(name)}<small>${fmt(e.t)}${sub ? " · " + esc(sub) : ""}</small></div><div class="body">${html}</div></div>`);
+  }
+  el.innerHTML = blocks.join("") || `<div class="empty">Nothing yet.</div>`;
+  const ds = el.querySelectorAll("details"); for (const i of openIdx) if (ds[i]) ds[i].open = true;
+  if (M.playing && M.follow && !openIdx.length) el.scrollTop = el.scrollHeight;
+}
+function pill(allowed, text) { const c = allowed === true ? "ok" : allowed === false ? "deny" : "info"; return `<span class="pill ${c}">${esc(text)}</span>`; }
+function json(o) { return `<pre>${esc(JSON.stringify(o, null, 2))}</pre>`; }
+function idDiff(id, diff) { return [...id].map((c, i) => `<span class="ch ${diff.includes(i) ? "d" : ""}">${esc(c)}</span>`).join(""); }
+function block(e) {
+  switch (e.kind) {
+    case "sim.caller_says": return `<p class="quote">“${esc(e.text)}”</p><p class="why">${esc(e.why)}. Synthesised to audio and streamed in 20 ms frames.</p>`;
+    case "vad": return `<p class="mono">${e.state === "speech" ? "speech started" : "silence"}</p><p class="why">${esc(e.why)}</p>`;
+    case "smart_turn": return `<div class="verdict">${pill(e.complete, e.complete ? "caller is done" : "caller not done")}<span class="bar"><i style="width:${Math.round(e.probability * 100)}%"></i></span><span class="mono">p = ${e.probability} · ${e.inference_ms} ms</span></div><p class="why">${esc(e.why)}</p>`;
+    case "turn.user_start": return `<p class="mono">caller turn started</p>`;
+    case "turn.user_end": return e.early ? `<p class="mono">turn already started from the transcript (see the early end above)</p>` : `<p><b>${e.endpoint_ms ?? "–"} ms</b> from silence to "the caller is done".</p>`;
+    case "endpoint.early": return `<div class="verdict">${pill(true, "end turn now")}<span class="mono">${esc(e.text)}</span></div><p class="why">${esc(e.why)}. Smart-turn alone would still be waiting.</p>`;
+    case "stt.final": return `<p class="quote">“${esc(e.text)}”</p><p class="why">final transcript${e.after_vad_stop_ms != null ? `, ${e.after_vad_stop_ms} ms after the caller went quiet` : ""}${M.meta.stack?.stt?.startsWith("scripted") ? " (scripted STT in this recording)" : ""}</p>`;
+    case "slot": return `<div class="verdict">${pill(e.action.startsWith("complete") ? true : null, e.action.split(":")[0])}<span class="mono">${esc(e.chars || "")}</span></div><p>${esc(e.action.split(":").slice(1).join(":").trim() || "")}</p><p class="why">The agent just asked for a ${e.expect === "id" ? "tracking number" : "postal code"}, so code handles the answer: no LLM call, and pieces said across turns are merged.</p>`;
+    case "id.parse": return `<p class="mono">“${esc(e.spoken)}” → <b>${esc(e.parsed)}</b></p><p class="why">NATO words, “X as in Y”, “R for rat”, Whisper's “4” for “for”, double/triple, accent homophones.</p>`;
+    case "id.decode": {
+      const rows = e.ranked.map((r, i) => `<tr><td>${i + 1}</td><td>${idDiff(r.id, r.diff)}</td><td>${r.cost}</td><td>${r.edits}</td></tr>`).join("");
+      return `<div class="funnel"><div><span>heard</span><b>${esc(e.heard)}</b></div><div><span>checksum</span><b>${e.heard_checksum_ok ? "valid" : "fails"}</b></div><div><span>candidates</span><b>${e.generated.toLocaleString()}</b></div><div><span>checksum-valid</span><b>${e.checksum_valid}</b></div><div><span>exist in DB</span><b>${e.exist_in_db}</b></div></div>
+        <div class="verdict">${pill(e.status === "not_found" ? false : e.status === "exact" ? true : null, e.status)}<span class="mono">${e.ms} ms</span></div>
+        ${rows ? `<div style="overflow-x:auto"><table class="ids"><tr><th>#</th><th>parcel (changed chars marked)</th><th>cost</th><th>edits</th></tr>${rows}</table></div>` : ""}
+        <p class="why">Sound-alike edits (B/D/E/P/T/V…) are cheap and random ones expensive. The Luhn mod-34 check character throws out ~97% of guesses for free, then one indexed lookup keeps the real parcels. ${e.status === "corrected" ? "A corrected match must be confirmed by the caller; the read-back starts at the first changed character." : e.status === "exact" ? "Exact and checksum-valid: no confirmation turn needed." : ""}</p>`;
+    }
+    case "turn.start": return `<p class="mono">turn ${e.turn} · listening for: ${esc(e.expect)}${e.caller_wants_human ? " · caller asked for a person" : ""}${e.other_parcel ? " · another parcel mentioned" : ""}</p>`;
+    case "llm.request": {
+      const msgs = e.messages.map((m, i) => {
+        const isState = i === e.messages.length - 1 && m.role === "system";
+        const body = m.content || (m.tool_calls ? m.tool_calls.map(t => `${t.function.name}(${t.function.arguments})`).join("\n") : "");
+        return `<div class="msg ${isState ? "state" : ""}"><div class="role">${isState ? "system · CALL STATE (rebuilt every call, from code)" : esc(m.role)}${m.name ? " · " + esc(m.name) : ""}</div><pre>${esc(body)}</pre></div>`;
+      }).join("");
+      return `<p class="mono">${esc(e.model)} · step ${e.step + 1} · ${e.messages.length} messages · history window ${e.window_turns}/${e.history_turns_total} turns · prompt mode ${esc(e.prompt_mode)}</p>
+        ${e.nudge ? `<p><span class="pill warn">correction sent</span> <span class="why">${esc(e.nudge)}</span></p>` : ""}
+        <details><summary>Show the exact prompt (system prompt, last ${e.window_turns} turns, CALL STATE last)</summary>${msgs}</details>
+        <p class="why">Tools offered: ${e.tools.map(esc).join(", ")}. The CALL STATE goes at the end so everything before it stays byte-identical between calls and the server's prefix cache is reused.</p>`;
+    }
+    case "llm.response": return `<div class="verdict"><span class="pill info">${e.ms} ms</span>${e.prompt_tokens ? `<span class="mono">${e.prompt_tokens} prompt tok · ${e.completion_tokens} out</span>` : ""}</div>
+        ${e.content ? `<p class="quote">“${esc(e.content)}”</p>` : ""}
+        ${e.tool_calls.length ? `<p class="mono">${e.tool_calls.map(c => `→ ${esc(c.name)}(${esc(JSON.stringify(c.arguments))})`).join("<br>")}</p>` : ""}`;
+    case "fastpath": return `<p class="quote">“${esc(e.reply)}”</p><p class="why">${esc(e.why)}</p>`;
+    case "tool.call": return `<p class="mono">${esc(e.tool)}(${esc(JSON.stringify(e.args))})</p>${e.ignored_args?.length ? `<p class="why">ignored arguments the tool doesn't take: ${e.ignored_args.map(esc).join(", ")}</p>` : ""}`;
+    case "tool.rejected": return `<div class="verdict">${pill(false, e.reason_code)}<span class="mono">${esc(e.tool)}</span></div><p class="why">${esc(e.explanation || "")}</p>`;
+    case "tool.result": return `<div class="verdict">${pill(e.allowed, e.allowed === false ? "denied" : e.allowed ? "allowed" : "result")}<span class="mono"><b>${esc(e.reason_code || "")}</b></span>${e.policy ? `<span class="pill info">policy.py decided</span>` : ""}</div>
+        ${e.explanation ? `<p>${esc(e.explanation)}</p>` : ""}
+        <details><summary>Full tool result</summary>${json(e.result)}</details>
+        ${e.allowed === false && e.policy ? `<p class="why">The model can only explain this verdict. It cannot override it.</p>` : ""}`;
+    case "policy.verify": return `<table class="ids"><tr><th>factor</th><th>heard</th><th>match</th></tr>
+        <tr><td>caller ID</td><td>${e.caller_id ? "present" : "withheld"}</td><td>${e.caller_id_match ? "✓" : "✗"}</td></tr>
+        <tr><td>postal code</td><td>${esc(e.postal_said)} → ${esc(e.postal_normalised || "?")}</td><td>${e.postal_match ? "✓" : "✗"}</td></tr></table>
+        <div class="verdict">${pill(e.level !== "none", "level: " + e.level)}</div><p class="why">Both factors = full access. Postal code alone = status only. A withheld number counts as unknown.</p>`;
+    case "guard": return `<div class="verdict"><span class="pill warn">${esc(e.guard)}</span>${e.action ? `<span class="mono">${esc(e.action)}</span>` : ""}</div>
+        ${e.text ? `<p class="quote">“${esc(e.text)}”</p>` : ""}${e.before ? `<p class="mono">before: ${esc(e.before)}<br>after: ${esc(e.after)}</p>` : ""}
+        <p class="why">${esc(e.why || e.correction || "")}</p>`;
+    case "turn.end": { const m = e.metrics || {}; return `<p class="mono">${m.llm_calls} LLM call(s) · ${m.fast_path} fast path · ${m.nudges} correction(s) · tools: ${(m.tool_calls || []).join(", ") || "none"} · ${Math.round(m.total_ms)} ms in the agent</p>`; }
+    case "agent.say": return `<div class="chunks">${(e.chunks || [e.text]).map(c => `<span>${esc(c)}</span>`).join("")}</div><p class="why">${esc(e.source === "agent" ? (e.why_chunks || "") : e.source)}</p>`;
+    case "endpoint.config": return `<p class="mono">listening for <b>${esc(e.expect)}</b>, silence fallback ${e.silence_fallback_s} s</p><p class="why">${esc(e.why)}</p>`;
+    case "filler": return `<p class="quote">“${esc(e.text)}”</p><p class="why">${esc(e.why)}</p>`;
+    case "barge_in": return `<div class="verdict">${pill(false, "caller interrupted")}</div><p class="why">${esc(e.action)}</p>`;
+    case "tts.cut": return `<p class="why">${esc(e.why)}</p>`;
+    case "latency": return waterfall(e);
+    default: return null;
+  }
+}
+function waterfall(e) {
+  const ep = e.endpoint_ms || 0, stt = Math.max(0, (e.stt_ms || 0) - ep), ag = e.agent_ms || 0, tts = e.tts_first_audio_ms || 0;
+  const total = e.voice_to_voice_ms || ep + stt + ag + tts || 1;
+  const rows = [["end of turn", 0, ep, "var(--caller)"], ["STT tail", ep, stt, "var(--muted)"], ["agent", total - tts - ag, ag, "var(--accent)"], ["TTS 1st audio", total - tts, tts, "var(--agent)"]];
+  return `<div class="wf">${rows.map(([n, a, w, c]) => `<div class="wf-row"><span>${n}</span><div class="wf-track"><i style="left:${a / total * 100}%;width:${Math.max(.5, w / total * 100)}%;background:${c}"></i></div><span>${Math.round(w)} ms</span></div>`).join("")}
+    <div class="wf-row"><span><b>caller hears</b></span><div></div><span><b>${Math.round(total)} ms</b></span></div></div>
+    <p class="why">Measured from the moment the caller went quiet to the first audio of the reply.${e.early_endpoint ? " This turn was ended by the checksum, not the silence timer." : ""}</p>`;
+}
+
+function renderState() {
+  const s = V.state;
+  const meta = M.meta;
+  const rows = s ? [
+    ["Parcel", s.parcel || (s.pending_readback?.length ? `awaiting yes/no: ${s.pending_readback.join(", ")}` : "none yet")],
+    ["Verification", s.verification], ["Caller ID", s.caller_id], ["Failed checks", `${s.failed_verifications} of 3`],
+    ["ID readings kept", s.id_readings?.length ? s.id_readings.join(", ") : "–"],
+    ["Asked for a person", s.caller_wants_human ? "yes" : "no"], ["Other parcel raised", s.other_parcel_mentioned ? "yes" : "no"],
+  ] : [["Parcel", "–"], ["Verification", "not checked"]];
+  if (meta.demo_parcel) rows.push(["Test parcel", `${meta.demo_parcel} · ${meta.demo_postal} · ${meta.demo_status}`]);
+  if (meta.lessons) rows.push(["Learned lessons in prompt", String(meta.lessons.length)]);
+  if (meta.learned_id_confusions != null) rows.push(["Learned ID confusions", String(meta.learned_id_confusions)]);
+  $("#state").innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  const codes = s?.reason_codes || [];
+  const bad = /NOT|LOCK|INVALID|DENIED|TOO_EARLY|UNKNOWN|BAD|NEEDS|ALREADY|EXHAUSTED|REQUESTED/;
+  $("#codes").innerHTML = codes.map(c => `<span class="tag ${bad.test(c) ? "deny" : c.endsWith("_OK") || c.includes("CONFIRMED") || c.includes("VERIFIED") || c === "STATUS_GIVEN" ? "ok" : ""}">${esc(c)}</span>`).join("");
+}
+function renderLatency() {
+  const svg = $("#latchart"), turns = Object.values(V.latency).filter(l => l.voice_to_voice_ms);
+  const W = svg.clientWidth || 300, rowH = 18, H = Math.max(40, turns.length * rowH + 22);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
+  if (!turns.length) { svg.innerHTML = `<text x="0" y="20" fill="var(--muted)" font-size="12">Appears once the caller hears a reply.</text>`; return; }
+  const max = Math.max(...turns.map(t => t.voice_to_voice_ms)), L = 36, R = 52, sx = v => v / max * (W - L - R);
+  let out = "";
+  turns.forEach((t, i) => {
+    const y = i * rowH + 4, ep = t.endpoint_ms || 0, stt = Math.max(0, (t.stt_ms || 0) - ep), ag = t.agent_ms || 0, tts = t.tts_first_audio_ms || 0;
+    let x = L;
+    out += `<text x="0" y="${y + 11}" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono, monospace">T${t.turn}</text>`;
+    for (const [w, c] of [[ep, "var(--caller)"], [stt, "var(--muted)"], [ag, "var(--accent)"], [tts, "var(--agent)"]]) { out += `<rect x="${x}" y="${y}" width="${Math.max(0, sx(w))}" height="12" rx="1" fill="${c}"/>`; x += sx(w); }
+    out += `<text x="${W - R + 6}" y="${y + 11}" font-size="11" fill="var(--ink)" font-family="IBM Plex Mono, monospace">${t.voice_to_voice_ms}</text>`;
+  });
+  out += `<line x1="${L}" x2="${L}" y1="0" y2="${H - 16}" stroke="var(--line)"/><text x="${L}" y="${H - 3}" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">0</text><text x="${W - R}" y="${H - 3}" font-size="10" text-anchor="end" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${max} ms</text>`;
+  svg.innerHTML = out;
+}
+const LOG_FAMS = ["turn", "stt", "slots", "ids", "llm", "tools", "policy", "guards", "tts", "agent", "vad", "caller"];
+function renderLog() {
+  const f = $("#filters");
+  if (!f.children.length) f.innerHTML = LOG_FAMS.map(x => `<button type="button" data-f="${x}" aria-pressed="false">${x}</button>`).join("");
+  const list = V.log.filter(e => !M.logFilter.size || M.logFilter.has(nodeFor(e)) || M.logFilter.has(FAMILY[e.kind])).slice(-250).reverse();
+  $("#evcount").textContent = `${V.log.length} events (spectrogram frames not listed)`;
+  $("#log").innerHTML = list.map(e => `<div data-t="${e.t}" data-b="${e._b}"><span>${fmt(e.t)}</span><span>${esc(e.kind)}</span><span>${esc(summ(e))}</span></div>`).join("");
+}
+function summ(e) {
+  const { t, seq, call, kind, _b, messages, metrics, cols, result, ...rest } = e;
+  return JSON.stringify(rest).slice(0, 220);
+}
+$("#filters").addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b) return; const f = b.dataset.f; M.logFilter.has(f) ? M.logFilter.delete(f) : M.logFilter.add(f); b.setAttribute("aria-pressed", M.logFilter.has(f)); renderLog(); });
+$("#log").addEventListener("click", ev => { const r = ev.target.closest("div[data-b]"); if (!r) return; M.sel = +r.dataset.b; M.follow = false; renderTurns(); renderDetail(); });
+
+function renderStack() {
+  const st = M.meta.stack, el = $("#stack");
+  const src = M.meta.source;
+  const s = $("#source");
+  s.textContent = M.live ? "live call" : src === "simulation" ? "simulated call · replay" : src === "live" ? "recorded call · replay" : M.events.length ? "replay" : "no call loaded";
+  s.className = "source" + (M.live ? " live" : "");
+  if (st) {
+    el.innerHTML = Object.entries(st).map(([k, v]) => `<span class="chip ${/real/.test(v) ? "real" : "stand"}" title="${esc(v)}"><b>${esc(k)}</b> ${esc(v.split(/[(:]/)[0].trim())}</span>`).join("");
+  } else if (M.meta.llm) {
+    el.innerHTML = ["llm", "stt", "stt_model", "tts", "vad", "turn"].filter(k => M.meta[k]).map(k => `<span class="chip real"><b>${k}</b> ${esc(M.meta[k])}</span>`).join("");
+  } else el.innerHTML = "";
+}
+
+/* ======================================================================
+   Playback, audio, loop
+   ====================================================================== */
+const audio = new Audio(); audio.preload = "auto";
+function syncAudio(force) {
+  if (!M.wavUrl || M.live) return;
+  const want = M.playing && $("#sound").checked;
+  if (!want) { if (!audio.paused) audio.pause(); return; }
+  audio.playbackRate = M.speed;
+  if (force || Math.abs(audio.currentTime * 1000 - M.t) > 250) audio.currentTime = M.t / 1000;
+  if (audio.paused) audio.play().catch(() => {});
+}
+function play() { if (M.live) return; if (M.t >= M.duration) seek(0); M.playing = true; $("#play").textContent = "Pause"; M.follow = true; M.lastFrame = performance.now(); syncAudio(true); }
+function pause() { M.playing = false; $("#play").textContent = "Play"; syncAudio(false); }
+$("#play").addEventListener("click", () => M.playing ? pause() : play());
+$("#restart").addEventListener("click", () => { pause(); M.follow = true; seek(0); });
+$("#speed").addEventListener("change", ev => { M.speed = +ev.target.value; syncAudio(true); });
+$("#sound").addEventListener("change", () => syncAudio(true));
+document.addEventListener("keydown", ev => { if (ev.code === "Space" && !["INPUT", "SELECT", "BUTTON", "TEXTAREA"].includes(document.activeElement.tagName) && !document.activeElement.classList.contains("turn")) { ev.preventDefault(); M.playing ? pause() : play(); } });
+
+function frame(now) {
+  const dt = now - (M.lastFrame || now); M.lastFrame = now;
+  if (M.live && M.followLive) {
+    M.duration = Math.max(M.duration, M.events.length ? M.events[M.events.length - 1].t : 0);
+    M.liveClock = (M.liveClock ?? M.duration) + dt;
+    const target = Math.max(M.duration, Math.min(M.liveClock, M.duration + 1500));
+    seek(target);
+  } else if (M.playing) {
+    let t = M.t + dt * M.speed;
+    if (M.wavUrl && $("#sound").checked && !audio.paused && audio.currentTime > 0) t = audio.currentTime * 1000;
+    if (t >= M.duration) { t = M.duration; pause(); }
+    seek(t);
+  }
+  if (M.events.length) { drawSpec(); drawOverview(); tickNodes(); $("#clock").textContent = `${fmt(M.t)} / ${fmt(M.duration)}`; }
+  else drawEmpty();
+  requestAnimationFrame(frame);
+}
+function drawEmpty() {
+  const [ctx, W, H] = fitCanvas(spec); ctx.fillStyle = "#0b1219"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#6f8193"; ctx.font = "13px 'IBM Plex Sans', sans-serif"; ctx.fillText("Waiting for a call. Start one in the Pipecat playground, or open a recorded trace.", 14, H / 2);
+  const [c2, W2, H2] = fitCanvas(ov); c2.fillStyle = "#0b1219"; c2.fillRect(0, 0, W2, H2);
+}
+
+/* ======================================================================
+   Loading: embedded trace, local server (live + recorded), file picker
+   ====================================================================== */
+function parseNdjson(text) { return text.split("\n").filter(l => l.trim()).map(l => JSON.parse(l)); }
+function loadEvents(list, wavUrl) {
+  pause(); M.live = false; M.followLive = false; M.events = []; M.meta = {}; M.callId = null; M.sel = null; M.follow = true;
+  if (M.wavUrl && M.wavUrl.startsWith("blob:")) URL.revokeObjectURL(M.wavUrl);
+  M.wavUrl = wavUrl || null; if (M.wavUrl) audio.src = M.wavUrl; else audio.removeAttribute("src");
+  $("#sound").closest("label").hidden = !M.wavUrl;
+  ingest(list); reset(); M.t = 0; seek(0); renderStack(); renderHandles();
+}
+$("#file").addEventListener("change", async ev => {
+  const files = [...ev.target.files];
+  const tr = files.find(f => !f.name.endsWith(".wav")), wav = files.find(f => f.name.endsWith(".wav"));
+  if (!tr) return;
+  try { loadEvents(parseNdjson(await tr.text()), wav ? URL.createObjectURL(wav) : null); }
+  catch (e) { $("#source").textContent = `couldn't read ${tr.name}: ${e.message}`; }
+  ev.target.value = "";
+});
+
+const served = location.protocol.startsWith("http") && location.pathname.startsWith("/inspector");
+async function listRecorded() {
+  try {
+    const r = await fetch("/inspector/traces"); if (!r.ok) return;
+    const list = await r.json(); if (!list.length) return;
+    $("#pick").innerHTML = `<option value="">choose…</option>` + list.map(x => `<option value="${esc(x.name)}" data-wav="${esc(x.wav || "")}">${esc(x.name.replace(".jsonl", ""))}${x.wav ? " ♪" : ""}</option>`).join("");
+    $("#pick-wrap").hidden = false;
+  } catch { }
+}
+$("#pick").addEventListener("change", async ev => {
+  const o = ev.target.selectedOptions[0]; if (!o?.value) return;
+  if (M.ws) { M.ws.close(); M.ws = null; }
+  const r = await fetch(`/inspector/traces/${encodeURIComponent(o.value)}`);
+  loadEvents(parseNdjson(await r.text()), o.dataset.wav ? `/inspector/traces/${encodeURIComponent(o.dataset.wav)}` : null);
+  $("#golive").hidden = false;
+});
+function connectLive() {
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/inspector/ws`);
+  M.ws = ws;
+  ws.onmessage = msg => {
+    const data = JSON.parse(msg.data);
+    if (!Array.isArray(data)) {
+      if (data.kind === "hello") {
+        pause(); M.events = []; M.meta = {}; M.callId = null; M.wavUrl = null; audio.removeAttribute("src"); $("#sound").closest("label").hidden = true;
+        M.live = true; M.followLive = true; M.liveClock = null; reset(); M.t = 0; renderStack();
+      }
+      return;
+    }
+    const before = M.callId;
+    ingest(data);
+    if (M.callId !== before) { reset(); M.liveClock = null; renderStack(); renderHandles(); }
+    M.liveClock = Math.max(M.liveClock ?? 0, M.duration - 300);
+  };
+  ws.onclose = () => { if (M.ws === ws) { M.ws = null; M.live = false; renderStack(); $("#golive").hidden = false; listRecorded(); } };
+}
+$("#golive").addEventListener("click", () => { $("#golive").hidden = true; $("#pick").value = ""; connectLive(); });
+
+/* ======================================================================
+   "What it handles" and "How it gets better"
+   ====================================================================== */
+const HANDLES = [
+  ["Hearing the caller", [
+    ["Turn end follows the question", "Call #1 waited exactly 3.0 s on every turn: smart-turn said “not done” and the silence timer decided. Now the fallback follows what was just asked: 2.2 s for a tracking number, 1.6 s for a postal code, 0.9 s otherwise. Turn detection p50 went from 2998 to 1092 ms.", "endpoint.config", "voice/endpointing.py"],
+    ["The checksum ends the turn", "A transcript that already parses to a checksum-valid ID or a full postal code starts the agent immediately. A half-read ID can't pass the checksum, so nobody is cut off.", "endpoint.early", "voice/brain.py"],
+    ["Smart-turn v3 decides “done”, VAD only hears sound", "Silero VAD stops after 0.2 s of silence; an audio model then judges whether the caller finished their thought or is pausing between characters.", "smart_turn", "voice/bot.py"],
+    ["Barge-in without confusing the model", "Call #2: interruption notes written into history were copied by the 3B and spoken aloud. A reply never heard is removed from history; a reply cut off midway is flagged in CALL STATE only.", "barge_in", "voice/brain.py"],
+    ["Stale answers are never spoken", "If the caller speaks while the agent is thinking, the answer is to an old question and is dropped.", "guard:stale_reply_dropped", "voice/brain.py"],
+    ["Filler timed from the caller's silence", "“One moment.” only after the caller has heard nothing for 1.8 s, measured from when they stopped talking. Call #2 had a filler on almost every turn.", "filler", "voice/brain.py"],
+    ["First audio after the first clause", "Replies go to TTS clause by clause. A 120-character read-back took 3.9 s to first audio as one sentence and 1.7 s with its first clause sent alone.", "agent.say", "voice/brain.py"],
+  ]],
+  ["Getting codes right", [
+    ["Tracking IDs carry a check character", "SR + 8 characters + a Luhn mod-34 check character, with no I or O. Any single substitution or adjacent swap is detected. At 3% per-character ASR error: 98.1% top-1 vs 79.3% for exact lookup, 0.00% wrong parcel acted on.", "id.decode", "ids.py"],
+    ["Search the sound-alikes, then ask the database once", "Mishearings are generated with confusion-weighted costs (B/D/E/P/T/V are cheap), the checksum discards ~97% of them, and one indexed lookup keeps the real ones. About 3.5 ms p95, and it doesn't grow with the number of parcels.", "id.decode", "ids.py"],
+    ["How people actually spell", "Call #1: Whisper wrote “R 4 RAT”, “M4MAT”, and “odd”/“hard” for an accented R. The parser handles NATO, “X as in Y”, “R for rat” with for→4, double/triple, and those homophones.", "id.parse", "ids.py"],
+    ["Confirm only what was uncertain", "An exact match is accepted without a confirmation turn. A corrected one is read back starting at the first changed character, so the caller checks the part that was in doubt.", "fastpath", "ids.py"],
+    ["Evidence adds up across readings", "When no single reading resolves, every parcel is scored against all of the call's readings together. Independent mishearings rarely hit the same character.", "tool:ID_RECOVERED_MULTI", "tools.py"],
+    ["Codes are handled in code", "Call #5: a postal code said in pieces, and the 3B stopped calling verify_caller. When the agent just asked for a code, the answer goes straight to the tool, and pieces are merged with “Mm-hm, go on.”. Zero LLM calls on those turns.", "slot", "slots.py"],
+  ]],
+  ["Deciding what's allowed", [
+    ["The model never approves anything", "Every action tool returns allowed, a reason code and an explanation from policy.py. The model can phrase the verdict; it can't change it.", "tool:policy", "policy.py"],
+    ["Two-factor identity", "Caller ID plus the spoken postal code gives full access. The postal code alone gives status only. A withheld number counts as unknown; the first version let anyone skip a factor by hiding caller ID.", "policy.verify", "policy.py"],
+    ["Postal-code guessing is capped", "An eval run let a caller try 13 postal codes. Three failures now lock verification for the call and hand off to a person.", "tool:VERIFY_LOCKED", "tools.py"],
+    ["The model can't answer for the caller", "A corrected tracking number can't be confirmed in the same turn it was found: the caller has to say yes.", "tool:CONFIRM_NEEDS_CALLER", "tools.py"],
+    ["One parcel at a time", "Call #4: “another package arrived damaged” got a claim on the first parcel. Once another parcel is mentioned, every action is blocked until it is looked up.", "tool:OTHER_PARCEL_NOT_FOUND", "tools.py"],
+    ["No transfer nobody asked for", "Call #6: the 3B transferred a caller who had only corrected their name. A model-initiated transfer now needs the caller to have asked for a person.", "tool:TRANSFER_NOT_REQUESTED", "tools.py"],
+    ["Dates are parsed, not computed by the model", "The 7B booked Wednesday the 21st and called it Saturday. The tool takes the caller's words (“Monday then”) and dates.py resolves them against the bookable days.", "tool:reschedule_delivery", "dates.py"],
+  ]],
+  ["Keeping the model honest", [
+    ["A “done” needs a tool that said yes", "If a reply claims an action that no tool allowed, the model gets one correction. If it repeats the claim, the reply is replaced with an honest hand-off. A false “done” never reaches the caller.", "guard:unbacked_claim", "agent.py"],
+    ["Promises need a tool call", "“Let me check that.” with no tool call gets one correction, per sentence, including “let's”.", "guard:promise_without_action", "agent.py"],
+    ["Text written before the tool result is dropped", "Call #3: the 3B wrote an answer and called a tool in the same message, so callers heard everything twice. Only a short filler survives, and no sentence is said twice.", "guard:pre_tool_text_dropped", "agent.py"],
+    ["Nothing unspeakable reaches TTS", "Bracketed notes, tool names, raw tracking numbers and markdown are removed before speech.", "guard:speech_sanitised", "agent.py"],
+    ["Bad tool calls don't cost a round trip", "Extra arguments are dropped and logged; hallucinated tools come back as UNKNOWN_TOOL. Phase 6 found 45 such calls in one 3B eval run.", "tool.call:ignored", "tools.py"],
+  ]],
+  ["Learning between calls", [
+    ["Lessons have to beat the evals", "The improvement agent proposes one-line lessons for the phone agent's prompt. Each is scored against the full eval suite, twice, with and without it. It's kept only with more passing runs, no new safety failures or false claims, and held-out scenarios no worse.", "llm.request:lessons", "learning/lessons.py"],
+    ["Lessons can't loosen rules", "A lesson that mentions skipping verification, sharing personal details, admin access or fees is rejected before it is ever tested. Lessons sit after the rules in the prompt, and policy.py still decides every action.", "", "learning/store.py"],
+    ["Confirmed read-backs teach the ID decoder", "When a caller confirms a corrected tracking number, the differing characters are a labelled speech-recognition error. Repeated ones get cheaper in the decoder, kept only if replayed real readings resolve better and the benchmark doesn't drop.", "id.decode", "learning/confusions.py"],
+    ["Same rules over MCP", "SwiftRoute's tools are an MCP server, so Claude Desktop, Cursor or another agent can serve customers with the identical policy, audit trail and traces. A caller ID sent over MCP isn't trusted, so those sessions get status-only access.", "", "mcp_server.py"],
+  ]],
+  ["Spending fewer LLM calls", [
+    ["The tool supplies the words", "Lookups, read-backs and postal mismatches are deterministic, so the tool returns caller-ready text and a second LLM call (1.2–2.4 s) is skipped.", "fastpath", "agent.py"],
+    ["Ground truth lives in code", "Confirmed parcel, verification level, completed actions and bookable dates are rebuilt into a CALL STATE block on every call. Only the last 6 turns of transcript are sent, so prompt size stays flat.", "llm.request", "agent.py"],
+    ["A prompt the cache can reuse", "CALL STATE goes last and the tool list never changes, so the server reuses the cached prefix. Phase 6a measured that a 34% shorter but changing prompt was not faster.", "llm.request", "prompting.py"],
+  ]],
+];
+function findEvent(key) {
+  const [k, sub] = key.split(":");
+  return M.events.find(e => {
+    if (k === "guard") return e.kind === "guard" && e.guard === sub;
+    if (k === "llm.request" && sub === "lessons") return e.kind === "llm.request" && (e.messages?.[0]?.content || "").includes("Lessons from past calls");
+    if (k === "tool.call") return (e.kind === "tool.call" && e.ignored_args?.length) || e.kind === "tool.rejected";
+    if (k === "tool") return e.kind === "tool.result" && (sub === "policy" ? e.policy && e.allowed === false || e.policy && e.allowed : (e.reason_code === sub || e.tool === sub));
+    return e.kind === k;
+  });
+}
+function renderHandles() {
+  $("#handles").innerHTML = HANDLES.map(([group, items]) => `<div class="group"><h3>${esc(group)}</h3><div class="cards">${items.map(([title, text, ev, file]) => {
+    const hit = M.events.length ? findEvent(ev) : null;
+    return `<div class="card"><h4>${esc(title)}</h4><p>${esc(text)}</p><div class="ev"><code>${esc(file)}</code>${hit ? `<button class="btn" type="button" data-jump="${hit.t}" data-b="${hit._b}">Show in call</button>` : ""}</div></div>`;
+  }).join("")}</div></div>`).join("");
+}
+$("#handles").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-jump]"); if (!b) return;
+  selectTab("call"); pause(); M.follow = false; seek(+b.dataset.jump + 1); M.sel = +b.dataset.b; renderTurns(); renderDetail();
+  const step = [...document.querySelectorAll("#detail .step")].find(s => Math.abs(+s.dataset.t - +b.dataset.jump) < 1);
+  if (step) { step.scrollIntoView({ block: "center" }); step.style.background = "var(--warn-bg)"; setTimeout(() => step.style.background = "", 1600); }
+});
+
+const INCIDENTS = [
+  ["Eval v1", "Status leaked through the prompt: the model answered “where's my parcel” without calling get_status, a path around verification.", "Status removed from CALL STATE", "eval scenario"],
+  ["Eval v2", "The 7B did date arithmetic and booked the wrong day.", "reschedule_delivery takes the caller's words; dates.py parses them", "test_dates.py"],
+  ["Eval v2", "Unbacked “has been changed successfully”.", "Runtime claim guard: one correction, then an honest hand-off", "test_agent.py"],
+  ["Eval v3", "13 postal-code guesses in one call.", "Lockout after 3 failures (VERIFY_LOCKED)", "test_core.py"],
+  ["Real call #1", "Three readings of a real ID all failed (“S Odd. V C. M C. 7. Hard E G 1.”).", "Spelling-by-word parser, homophones, multi-reading recovery", "test_real_call_ids.py"],
+  ["Real call #1", "Turn detection exactly 3.0 s every turn.", "Question-aware silence fallback + checksum early end", "test_voice_brain.py"],
+  ["Real call #2", "“[caller interrupted …]” spoken aloud, three times.", "Unheard replies removed; cut-offs flagged in CALL STATE; brackets stripped", "test_voice_brain.py"],
+  ["Real call #3", "Every answer said twice; a damage claim on the wrong parcel.", "Pre-tool text dropped, sentence dedupe; OTHER_PARCEL_NOT_FOUND", "test_agent.py, eval second_parcel_claim"],
+  ["Real call #5", "Postal code said in pieces; the model stopped verifying.", "Slots: codes handled in code, fragments merged", "test_agent.py"],
+  ["Real call #6", "A transfer nobody asked for, then the call was stuck in the queue.", "TRANSFER_NOT_REQUESTED unless the caller asked", "test_core.py"],
+  ["Phase 6a", "45 bad tool calls in a 3B eval run with short schemas.", "Tolerant dispatch: extra arguments dropped and logged", "test_core.py"],
+];
+const EVALS = [
+  ["v1", "qwen2.5:7b", "4/14", "2", "p50 2.5 s / p95 9.3 s per LLM call"],
+  ["v2", "qwen2.5:7b", "11/14", "1", "p50 2.4 s / p95 8.7 s"],
+  ["v2", "qwen2.5:3b", "7/14", "2", "p50 1.2 s / p95 3.7 s"],
+  ["v3", "qwen2.5:7b", "14/14", "0", "p50 3.0 s / p95 10.1 s"],
+  ["v3", "qwen2.5:3b", "10/14", "0", "p50 1.6 s / p95 4.9 s"],
+];
+const P6 = [["full prompt", "60%", "1366", "3917", "1490", "9"], ["compact, all tools", "56%", "1646", "4314", "1276", "45"], ["gated tools", "56%", "1318", "4869", "985", "9"]];
+function renderBetter() {
+  $("#incidents").innerHTML = `<tr><th>Where</th><th>What broke</th><th>Fix</th><th>Pinned by</th></tr>` + INCIDENTS.map(r => `<tr><td class="num">${esc(r[0])}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td class="num">${esc(r[3])}</td></tr>`).join("");
+  $("#evals").innerHTML = `<tr><th>Run</th><th>Model</th><th>Scenarios passed</th><th>False claims</th><th>Latency</th></tr>` + EVALS.map(r => `<tr><td class="num">${r[0]}</td><td class="num">${r[1]}</td><td class="num">${r[2]}</td><td class="num">${r[3]}</td><td>${r[4]}</td></tr>`).join("");
+  $("#phase6").innerHTML = `<tr><th>qwen2.5:3b, 15 scenarios × 3</th><th>Pass</th><th>LLM p50 ms</th><th>LLM p95 ms</th><th>Prompt tokens</th><th>Bad tool calls</th></tr>` + P6.map(r => `<tr><td>${r[0]}</td>${r.slice(1).map(x => `<td class="num">${x}</td>`).join("")}</tr>`).join("");
+}
+
+let LEARNING = null;
+function renderLearning() {
+  const el = $("#learning"); if (!el) return;
+  const L = LEARNING;
+  if (!L || (!L.lessons?.length && !Object.keys(L.confusions?.promoted || {}).length && !L.log?.length)) {
+    el.innerHTML = `<div class="note">No learning runs recorded yet. Run <code>python -m swiftroute.learning.agent</code> (lessons) and <code>python -m swiftroute.learning.confusions</code> (tracking-number confusions), then rebuild this page.</div>`;
+    return;
+  }
+  const lessons = (L.lessons || []).slice().reverse().map(x => {
+    const cls = x.status === "promoted" ? "ok" : x.status === "rejected" || x.status === "retired" ? "deny" : "info";
+    const b = x.before, a = x.after;
+    return `<div class="row"><div class="top"><span class="pill ${cls}">${esc(x.status)}</span><span class="mono">${esc(x.created || "")}</span>${b && a ? `<span class="mono">evals ${b.passed}/${b.runs} → ${a.passed}/${a.runs} · safety failures ${b.safety_failures} → ${a.safety_failures}</span>` : ""}</div>
+      <p>“${esc(x.text)}”</p>${x.reason ? `<p class="why">${esc(x.reason)}</p>` : ""}${x.source?.evidence ? `<p class="why">evidence: ${esc(String(x.source.evidence).slice(0, 160))}</p>` : ""}</div>`;
+  }).join("");
+  const conf = L.confusions || {}, pairs = Object.entries(conf.promoted || {});
+  const hist = (conf.history || []).slice(-3).reverse().map(h => `<p class="why">${esc(h.ts)}: added ${esc(Object.keys(h.added).join(", "))}. Replayed real readings found ${Math.round(h.before.replay.top1 * 100)}% → ${Math.round(h.after.replay.top1 * 100)}%; benchmark top-1 ${(h.before.bench.top1 * 100).toFixed(1)}% → ${(h.after.bench.top1 * 100).toFixed(1)}%, silent wrong parcel ${h.after.bench.silent_wrong}.</p>`).join("");
+  const confRow = `<div class="row"><div class="top"><span class="pill ${pairs.length ? "ok" : "info"}">ID decoder</span><span class="mono">${pairs.length} learned confusion${pairs.length === 1 ? "" : "s"}</span></div>
+    ${pairs.length ? `<p class="mono">${pairs.map(([k, v]) => `heard ${esc(k.split(">")[0])} → meant ${esc(k.split(">")[1])} (cost ${v})`).join(" · ")}</p>` : `<p class="why">None promoted yet.</p>`}${hist}</div>`;
+  const runs = (L.log || []).filter(e => e.event === "agent.end").slice(-3).reverse().map(e => `<p class="why">${esc(e.ts)}: improvement agent evaluated ${e.evaluated} lesson(s), kept ${e.accepted}.</p>`).join("");
+  const noLessons = lessons ? "" : `<div class="row"><div class="top"><span class="pill info">lessons</span></div><p class="why">No lesson runs in this recording. Lessons need the phone agent's real model: <code>python -m swiftroute.learning.agent --target qwen2.5:3b --reflector qwen2.5:7b</code></p></div>`;
+  el.innerHTML = `<div class="lrn">${confRow}${runs ? `<div class="row"><div class="top"><span class="pill info">agent runs</span></div>${runs}</div>` : ""}${lessons}${noLessons}</div>`;
+}
+
+/* tabs */
+function selectTab(name) {
+  for (const b of document.querySelectorAll("nav.tabs button")) b.setAttribute("aria-selected", b.dataset.tab === name);
+  for (const v of ["call", "handles", "better"]) $(`#view-${v}`).hidden = v !== name;
+  if (name === "call") renderLatency();
+}
+document.querySelector("nav.tabs").addEventListener("click", ev => { const b = ev.target.closest("button[data-tab]"); if (b) selectTab(b.dataset.tab); });
+if (["handles", "better"].includes(location.hash.slice(1))) selectTab(location.hash.slice(1));
+
+/* boot */
+reset(); renderPipeline(); renderBetter(); renderHandles(); renderLog(); renderState(); renderLatency();
+const embedded = $("#embedded-trace").textContent.trim();
+const embeddedWav = document.getElementById("embedded-wav")?.textContent.trim();
+if (embedded) loadEvents(parseNdjson(embedded), embeddedWav || null);
+try { const t = document.getElementById("embedded-learning")?.textContent; if (t) LEARNING = JSON.parse(t); } catch { }
+renderLearning();
+if (served) { listRecorded(); connectLive(); fetch("/inspector/learning").then(r => r.ok ? r.json() : null).then(j => { if (j) { LEARNING = j; renderLearning(); } }).catch(() => {}); }
+window.addEventListener("resize", () => renderLatency());
+requestAnimationFrame(frame);
+</script>
